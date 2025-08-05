@@ -1,1 +1,50 @@
+name: Auto Update & Push HilayTV Playlist
 
+on:
+  schedule:
+    - cron: '0 */3 * * *'  # Every 3 hours
+  workflow_dispatch:
+
+jobs:
+  update-playlist:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout this repository
+      uses: actions/checkout@v3
+
+    - name: Install Python dependencies
+      run: pip install requests
+
+    - name: Create tmp_script folder
+      run: mkdir tmp_script
+
+    - name: Unzip protected Python script
+      env:
+        ZIP_PASS: ${{ secrets.ZIP_FILE_PASS }}
+      run: |
+        unzip -o -P "$ZIP_PASS" hilaytv.zip -d tmp_script
+
+    - name: Run Python script
+      run: python3 tmp_script/update_hilaytv.py
+
+    - name: Delete script after running
+      if: always()
+      run: rm -rf tmp_script
+
+    - name: Clone target private repository
+      run: |
+        git clone https://x-access-token:${{ secrets.TARGET_TOKEN2TS }}@${{ secrets.TARGET_URLTS }} ${{ secrets.TARGET_NAMETS }}
+
+    - name: Copy playlist to target repository
+      run: |
+        cp hilaytv.m3u ${{ secrets.TARGET_NAMETS }}/hilaytv.m3u
+
+    - name: Commit & push to target repository
+      run: |
+        cd ${{ secrets.TARGET_NAMETS }}
+        git config user.name "${{ secrets.TARGET_REPO_USER }}"
+        git config user.email "${{ secrets.TARGET_REPO_USER }}@users.noreply.github.com"
+        git add hilaytv.m3u
+        git commit -m "🔄 Auto update HilayTV playlist on $(date '+%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+        git pushpush
