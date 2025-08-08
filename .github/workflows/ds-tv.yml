@@ -21,7 +21,7 @@ jobs:
 
       - name: Unzip script with password
         env:
-          FILE_API: ${{ secrets.FILE_API }}
+          FILE_API: ${{ secrets.FILE_APID }}
         run: |
           unzip -o -P "$FILE_API" filedst.zip -d tmp_script
 
