@@ -31,6 +31,20 @@ jobs:
       - name: Run scraping script
         run: python tv.py
 
+      - name: List files after script runs (for debug)
+        run: ls -la
+
+      - name: Check if output file exists
+        env:
+          FILENAME: ${{ secrets.FILENAMETHETVAPP }}
+        run: |
+          if [ ! -f "$FILENAME" ]; then
+            echo "❌ File $FILENAME not found!"
+            exit 1
+          else
+            echo "✅ File $FILENAME found."
+          fi
+
       - name: Clone target repository
         env:
           TARGET_TOKEN2TS: ${{ secrets.TARGET_TOKEN2TS }}
@@ -44,7 +58,9 @@ jobs:
           TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
           FILENAME: ${{ secrets.FILENAMETHETVAPP }}
         run: |
+          echo "Copying $FILENAME to $TARGET_NAMETS/$FILENAME"
           cp $FILENAME $TARGET_NAMETS/$FILENAME
+          ls -la $TARGET_NAMETS
 
       - name: Force Commit & Push to target repository
         env:
