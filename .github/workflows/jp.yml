@@ -38,7 +38,7 @@ jobs:
       - name: Copy updated playlist to target repo
         env:
           TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
-          FILENAME: ${{ secrets.FILENAMEUDP }}
+          FILENAME: ${{ secrets.FILENAMEJP }}
         run: |
           cp $FILENAME $TARGET_NAMETS/$FILENAME
 
@@ -46,7 +46,7 @@ jobs:
         env:
           TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
           TARGET_REPO_USER: ${{ secrets.TARGET_REPO_USER }}
-          FILENAME: ${{ secrets.FILENAMEUDP }}
+          FILENAME: ${{ secrets.FILENAMEJP }}
         run: |
           cd $TARGET_NAMETS
           git config user.name "${TARGET_REPO_USER}"
