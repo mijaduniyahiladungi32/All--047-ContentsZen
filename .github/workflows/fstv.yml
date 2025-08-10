@@ -13,10 +13,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Checkout repository
+      - name: 📥 Checkout source repository
         uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
 
       - name: 🐍 Set up Python 3.11
         uses: actions/setup-python@v4
@@ -33,36 +31,36 @@ jobs:
       - name: 🎯 Run scraping script
         run: python fstv.py
 
-      - name: 💾 Commit & Safely Push if Playlist Changed
+      - name: 📂 Clone target repository
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_TOKEN2TS: ${{ secrets.TARGET_TOKEN2TS }}
+          TARGET_URLTS: ${{ secrets.TARGET_URLTS }}
+          TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git clone https://x-access-token:${TARGET_TOKEN2TS}@${TARGET_URLTS} ${TARGET_NAMETS}
 
-          # Stage the output
-          git add FSTV24.m3u8
+      - name: 📄 Copy updated playlist to target repo
+        env:
+          TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
+          FILENAME: ${{ secrets.FILENAME }}
+        run: |
+          cp $FILENAME $TARGET_NAMETS/$FILENAME
 
-          # Check if file actually changed
-          if git diff --cached --quiet; then
-            echo "✅ No changes to commit"
-            exit 0
-          fi
-
-          git commit -m "🔁 Update playlist $(date -u +'%a %b %d %T UTC %Y')"
-
-          # Small random delay to reduce collisions
-          sleep $((RANDOM % 10 + 5))
-
-          # Safe push, fallback merge if rejected
-          if ! git push origin main; then
-            echo "⚠️ Push rejected. Trying safe fetch + merge..."
-            git pull origin main --rebase || {
-              echo "❌ Rebase failed. Exiting to avoid corruption."
+      - name: 🚀 Commit & Push to target repository
+        env:
+          TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
+          TARGET_REPO_USER: ${{ secrets.TARGET_REPO_USER }}
+          FILENAME: ${{ secrets.FILENAME }}
+        run: |
+          cd $TARGET_NAMETS
+          git config user.name "${TARGET_REPO_USER}"
+          git config user.email "${TARGET_REPO_USER}@users.noreply.github.com"
+          git add $FILENAME
+          git commit -m "Auto update $FILENAME playlist on $(date '+%Y-%m-%d %H:%M:%S')" || echo "✅ No changes to commit"
+          git push || {
+            echo "⚠️ Push to target repo failed. Trying rebase..."
+            git pull --rebase && git push || {
+              echo "❌ Push to target repo failed again."
               exit 1
             }
-            git push origin main || {
-              echo "❌ Second push failed. Remote changed again."
-              exit 1
-            }
-          fi
+          }
