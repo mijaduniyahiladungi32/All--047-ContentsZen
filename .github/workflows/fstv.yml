@@ -42,7 +42,7 @@ jobs:
       - name: 📄 Copy updated playlist to target repo
         env:
           TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
-          FILENAME: ${{ secrets.FILENAME }}
+          FILENAME: ${{ secrets.FILENAMEFSTV }}
         run: |
           cp $FILENAME $TARGET_NAMETS/$FILENAME
 
