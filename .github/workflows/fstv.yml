@@ -1,9 +1,9 @@
-name: 🔁 Force Update FSTV Playlist
+name: Force Update FSTV Playlist
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 * * * *'  # ⏰ Hourly refresh
+    - cron: '0 * * * *'  # Hourly refresh
 
 permissions:
   contents: write
@@ -13,25 +13,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Checkout source repository
+      - name: Checkout source repository
         uses: actions/checkout@v3
 
-      - name: 🐍 Set up Python 3.11
+      - name: Set up Python 3.11
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      - name: 📦 Install Python dependencies & Playwright
+      - name: Install Python dependencies & Playwright
         run: |
           python -m pip install --upgrade pip
           pip install bs4 playwright urllib3 aiohttp
           playwright install firefox
           playwright install-deps
 
-      - name: 🎯 Run scraping script
+      - name: Run scraping script
         run: python fstv.py
 
-      - name: 📂 Clone target repository
+      - name: Clone target repository
         env:
           TARGET_TOKEN2TS: ${{ secrets.TARGET_TOKEN2TS }}
           TARGET_URLTS: ${{ secrets.TARGET_URLTS }}
@@ -39,14 +39,14 @@ jobs:
         run: |
           git clone https://x-access-token:${TARGET_TOKEN2TS}@${TARGET_URLTS} ${TARGET_NAMETS}
 
-      - name: 📄 Copy updated playlist to target repo
+      - name: Copy updated playlist to target repo
         env:
           TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
           FILENAME: ${{ secrets.FILENAMEFSTV }}
         run: |
           cp $FILENAME $TARGET_NAMETS/$FILENAME
 
-      - name: 🚀 Force Commit & Push to target repository
+      - name: Force Commit & Push to target repository
         env:
           TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
           TARGET_REPO_USER: ${{ secrets.TARGET_REPO_USER }}
@@ -56,11 +56,11 @@ jobs:
           git config user.name "${TARGET_REPO_USER}"
           git config user.email "${TARGET_REPO_USER}@users.noreply.github.com"
           git add $FILENAME
-          git commit --allow-empty -m "🔁 Force update $FILENAME playlist on $(date '+%Y-%m-%d %H:%M:%S')"
+          git commit --allow-empty -m "Force update $FILENAME playlist on $(date '+%Y-%m-%d %H:%M:%S')"
           git push || {
-            echo "⚠️ Push to target repo failed. Trying rebase..."
+            echo "Push to target repo failed. Trying rebase..."
             git pull --rebase && git push || {
-              echo "❌ Push to target repo failed again."
+              echo "Push to target repo failed again."
               exit 1
             }
           }
