@@ -2,6 +2,9 @@ import asyncio
 import urllib.parse
 from pathlib import Path
 from playwright.async_api import async_playwright
+import os
+import sys
+import time
 
 M3U8_FILE = "TheTVApp.m3u8"
 BASE_URL = "https://thetvapp.to"
@@ -18,6 +21,12 @@ SECTIONS_TO_APPEND = {
     "/ppv": "PPV",
     "/events": "Events"
 }
+
+def log_dir_state(stage):
+    print(f"\n=== Directory listing ({stage}) ===")
+    for f in sorted(os.listdir(".")):
+        print(f"- {f} ({os.path.getsize(f)} bytes)" if os.path.isfile(f) else f"[DIR] {f}")
+    print("===================================")
 
 def extract_real_m3u8(url: str):
     if "ping.gif" in url and "mu=" in url:
@@ -37,15 +46,16 @@ async def scrape_tv_urls():
         context = await browser.new_context()
         page = await context.new_page()
 
-        print(f"🔄 Loading /tv channel list...")
+        print(f"[INFO] Loading /tv channel list...")
         await page.goto(CHANNEL_LIST_URL, timeout=60000)
         links = await page.locator("ol.list-group a").all()
         hrefs = [await link.get_attribute("href") for link in links if await link.get_attribute("href")]
+        print(f"[DEBUG] Found {len(hrefs)} TV channel links.")
         await page.close()
 
         for href in hrefs:
             full_url = BASE_URL + href
-            print(f"🎯 Scraping TV page: {full_url}")
+            print(f"[STEP] Scraping TV page: {full_url}")
             for quality in ["SD", "HD"]:
                 stream_url = None
                 new_page = await context.new_page()
@@ -60,16 +70,16 @@ async def scrape_tv_urls():
                 await new_page.goto(full_url)
                 try:
                     await new_page.get_by_text(f"Load {quality} Stream", exact=True).click(timeout=5000)
-                except:
-                    pass
+                except Exception as e:
+                    print(f"[WARN] Could not click {quality} button: {e}")
                 await asyncio.sleep(4)
                 await new_page.close()
 
                 if stream_url:
-                    print(f"✅ {quality}: {stream_url}")
+                    print(f"[OK] {quality}: {stream_url}")
                     urls.append(stream_url)
                 else:
-                    print(f"❌ {quality} not found")
+                    print(f"[FAIL] {quality} not found")
 
         await browser.close()
     return urls
@@ -78,7 +88,7 @@ async def scrape_section_urls(context, section_path, group_name):
     urls = []
     page = await context.new_page()
     section_url = BASE_URL + section_path
-    print(f"\n📁 Loading section: {section_url}")
+    print(f"\n[INFO] Loading section: {section_url}")
     await page.goto(section_url, timeout=60000)
     links = await page.locator("ol.list-group a").all()
     hrefs_and_titles = []
@@ -90,11 +100,12 @@ async def scrape_section_urls(context, section_path, group_name):
             title = " - ".join(line.strip() for line in title_raw.splitlines() if line.strip())
             hrefs_and_titles.append((href, title))
 
+    print(f"[DEBUG] Found {len(hrefs_and_titles)} items in {group_name}.")
     await page.close()
 
     for href, title in hrefs_and_titles:
         full_url = BASE_URL + href
-        print(f"🎯 Scraping {group_name}: {title}")
+        print(f"[STEP] Scraping {group_name}: {title}")
 
         for quality in ["SD", "HD"]:
             stream_url = None
@@ -111,17 +122,17 @@ async def scrape_section_urls(context, section_path, group_name):
 
             try:
                 await new_page.get_by_text(f"Load {quality} Stream", exact=True).click(timeout=5000)
-            except:
-                pass
+            except Exception as e:
+                print(f"[WARN] Could not click {quality} button: {e}")
 
             await asyncio.sleep(4)
             await new_page.close()
 
             if stream_url:
-                print(f"✅ {quality}: {stream_url}")
+                print(f"[OK] {quality}: {stream_url}")
                 urls.append((stream_url, group_name, title))
             else:
-                print(f"❌ {quality} not found")
+                print(f"[FAIL] {quality} not found")
 
     return urls
 
@@ -150,7 +161,6 @@ def replace_urls_in_tv_section(lines, tv_urls):
     return result
 
 def append_new_streams(lines, new_urls_with_groups):
-    # Delete existing MLB, PPV, and NFL entries first
     cleaned_lines = []
     skip_next = False
     for line in lines:
@@ -166,19 +176,17 @@ def append_new_streams(lines, new_urls_with_groups):
             continue
         cleaned_lines.append(line)
 
-    lines = cleaned_lines
-
     existing_entries = {}
     i = 0
-    while i < len(lines) - 1:
-        if lines[i].startswith("#EXTINF:-1"):
-            line = lines[i]
+    while i < len(cleaned_lines) - 1:
+        if cleaned_lines[i].startswith("#EXTINF:-1"):
+            line = cleaned_lines[i]
             group = None
             title = line.split(",")[-1].strip()
             if 'group-title="' in line:
                 group = line.split('group-title="')[1].split('"')[0]
             if group:
-                url = lines[i + 1]
+                url = cleaned_lines[i + 1]
                 if (group, title) not in existing_entries:
                     existing_entries[(group, title)] = set()
                 existing_entries[(group, title)].add(url)
@@ -206,41 +214,52 @@ def append_new_streams(lines, new_urls_with_groups):
         else:
             ext = f'#EXTINF:-1 group-title="{group}",{title}'
 
-        lines.append(ext)
-        lines.append(url)
+        cleaned_lines.append(ext)
+        cleaned_lines.append(url)
         new_entries_added[key].add(url)
 
-    lines = [line for line in lines if line.strip()]
-    if not lines or lines[0].strip() != "#EXTM3U":
-        lines.insert(0, "#EXTM3U")
+    cleaned_lines = [line for line in cleaned_lines if line.strip()]
+    if not cleaned_lines or cleaned_lines[0].strip() != "#EXTM3U":
+        cleaned_lines.insert(0, "#EXTM3U")
 
-    return lines
+    return cleaned_lines
 
 async def main():
+    log_dir_state("BEFORE RUN")
+
     if not Path(M3U8_FILE).exists():
-        print(f"❌ File not found: {M3U8_FILE}")
+        print(f"[ERROR] File not found: {M3U8_FILE}")
         return
 
     with open(M3U8_FILE, "r", encoding="utf-8") as f:
         lines = f.read().splitlines()
 
-    print("🔧 Replacing only /tv stream URLs...")
+    print("[STEP] Replacing only /tv stream URLs...")
     tv_new_urls = await scrape_tv_urls()
+    print(f"[DEBUG] TV URLs scraped: {len(tv_new_urls)}")
     if not tv_new_urls:
-        print("❌ No TV URLs scraped.")
+        print("[ERROR] No TV URLs scraped.")
         return
 
     updated_lines = replace_urls_in_tv_section(lines, tv_new_urls)
 
-    print("\n📦 Scraping all other sections (NBA, NFL, Events, MLB, PPV, etc)...")
+    print("\n[STEP] Scraping all other sections...")
     append_new_urls = await scrape_all_append_sections()
+    print(f"[DEBUG] Section URLs scraped: {len(append_new_urls)}")
     if append_new_urls:
         updated_lines = append_new_streams(updated_lines, append_new_urls)
 
     with open(M3U8_FILE, "w", encoding="utf-8") as f:
         f.write("\n".join(updated_lines))
 
-    print(f"\n✅ {M3U8_FILE} updated: Clean top, no duplicates, proper MLB, NFL, and PPV logos.")
+    print(f"[DONE] {M3U8_FILE} updated successfully.")
+    log_dir_state("AFTER RUN")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    start_time = time.time()
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        print(f"[FATAL] {e}")
+        sys.exit(1)
+    print(f"[INFO] Total runtime: {time.time() - start_time:.2f} seconds")
