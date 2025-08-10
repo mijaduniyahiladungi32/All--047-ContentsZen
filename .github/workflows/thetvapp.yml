@@ -1,4 +1,4 @@
-name: Force Update thetvapp Playlist
+name: Force Update FSTV Playlist
 
 on:
   workflow_dispatch:
@@ -31,62 +31,36 @@ jobs:
       - name: Run scraping script
         run: python tv.py
 
-      # ডিবাগ: ওয়ার্কস্পেসের বর্তমান অবস্থান ও ফাইল লিস্টিং
-      - name: Debug workspace contents (after scraping)
-        run: |
-          echo "Current directory: $(pwd)"
-          echo "Listing all files recursively:"
-          ls -lR
-          echo "Searching for TheTVApp.m3u8 in workspace:"
-          find . -type f -name "TheTVApp.m3u8" || echo "File not found!"
-
       - name: Clone target repository
         env:
           TARGET_TOKEN2TS: ${{ secrets.TARGET_TOKEN2TS }}
           TARGET_URLTS: ${{ secrets.TARGET_URLTS }}
+          TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
         run: |
-          git clone https://x-access-token:${TARGET_TOKEN2TS}@${TARGET_URLTS} target-repo
+          git clone https://x-access-token:${TARGET_TOKEN2TS}@${TARGET_URLTS} ${TARGET_NAMETS}
 
-      # ডিবাগ: টার্গেট রিপোজিটরির ফোল্ডার অবস্থা
-      - name: Debug target repo folder contents
-        run: |
-          echo "Contents of target-repo folder after clone:"
-          ls -l target-repo
-
-      - name: Copy updated playlist to target repo with debug
+      - name: Copy updated playlist to target repo
         env:
+          TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
           FILENAME: ${{ secrets.FILENAMETHETVAPP }}
         run: |
-          echo "Trying to copy $FILENAME into target-repo folder..."
-          if [ -f "$FILENAME" ]; then
-            echo "Source file $FILENAME found."
-            cp -v "$FILENAME" "target-repo/$FILENAME"
-            echo "File copied successfully."
-          else
-            echo "ERROR: Source file $FILENAME not found!"
-            exit 1
-          fi
-
-      - name: Debug target repo folder contents after copy
-        run: |
-          echo "Contents of target-repo folder after copy:"
-          ls -l target-repo
+          cp $FILENAME $TARGET_NAMETS/$FILENAME
 
       - name: Force Commit & Push to target repository
         env:
+          TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
           TARGET_REPO_USER: ${{ secrets.TARGET_REPO_USER }}
           FILENAME: ${{ secrets.FILENAMETHETVAPP }}
         run: |
-          cd target-repo
+          cd $TARGET_NAMETS
           git config user.name "${TARGET_REPO_USER}"
           git config user.email "${TARGET_REPO_USER}@users.noreply.github.com"
-          git status
-          git add "$FILENAME"
+          git add $FILENAME
           git commit --allow-empty -m "Force update $FILENAME playlist on $(date '+%Y-%m-%d %H:%M:%S')"
           git push || {
-            echo "Push failed, retrying with rebase..."
+            echo "Push to target repo failed. Trying rebase..."
             git pull --rebase && git push || {
-              echo "Push failed again, exiting."
+              echo "Push to target repo failed again."
               exit 1
             }
           }
