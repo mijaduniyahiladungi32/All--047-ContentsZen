@@ -5,7 +5,7 @@ from datetime import datetime
 # Configuration
 SOURCE_URL = "https://cdn.djdoolky76.net/m9L6CtgDVC.m3u"  # New playlist URL
 EPG_URL = "https://zipline.nocn.ddnsfree.com/u/merged2_epg.xml.gz"  # EPG guide URL
-OUTPUT_FILE = "UDPTV_cleaned.m3u"  # Output filename
+OUTPUT_FILE = "UDPTV.m3u"  # Output filename
 GROUP_TITLE = "UDPTV Live Streams"  # Standardized group title
 
 def download_playlist():
