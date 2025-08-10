@@ -1,60 +1,84 @@
-name: 🔁 Force Update UDPTV Playlist
+name: Clone, Merge & Push Playlist
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # ⏱ Every 5 minutes
+    - cron: '0 * * * *' 
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
-  scrape:
+  clone-merge-push:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+    - name: Checkout this workflow repo
+      uses: actions/checkout@v3
 
-      - name: 🐍 Set up Python 3.11
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
+    - name: Clone 
+      env:
+        TARGET_TOKEN2TS: ${{ secrets.TARGET_TOKEN2TS }}
+        TARGET_URLTS: ${{ secrets.TARGET_URLTS }}
+        TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
+      run: |
+        # (public/private)
+        git clone https://x-access-token:${TARGET_TOKEN2TS}@${TARGET_URLTS} ${TARGET_NAMETS}
 
-      - name: 📦 Install required Python dependency
-        run: pip install requests
+    - name: Merge all .m3u with group-title set from cloned repo
+      run: |
+        mkdir -p merged_tmp
+        echo "#EXTM3U" > merged_tmp/combined-playlist.m3u
 
-      - name: 🎯 Run scraping script
-        run: python udptv.py
-
-      - name: 💾 Commit & Safely Push if Playlist Changed
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions@users.noreply.github.com"
-
-          git add UDPTV.m3u
-
-          if git diff --cached --quiet; then
-            echo "✅ No changes to commit"
-            exit 0
-          fi
-
-          git commit -m "🔁 Update playlist $(date -u +'%a %b %d %T UTC %Y')"
-
-          sleep $((RANDOM % 10 + 5))
-
-          if ! git push origin main; then
-            echo "⚠️ Push rejected. Trying safe fetch + rebase..."
-            git pull origin main --rebase || {
-              echo "❌ Rebase failed. Exiting to avoid corruption."
-              exit 1
+        find ${TARGET_NAMETS} -type f -name "*.m3u" ! -name "combined-playlist.m3u" | while read file; do
+          base=$(basename "$file" .m3u)
+          awk -v grp="$base" '
+            /^#EXTM3U/ { next }
+            /^#EXTINF/ {
+              if ($0 ~ /group-title="/) {
+                sub(/group-title="[^"]*"/, "group-title=\"" grp "\"")
+              } else {
+                sub(/#EXTINF:/, "#EXTINF:-1 group-title=\"" grp "\",")
+              }
+              print
+              getline
+              print
+              next
             }
-            git push origin main || {
-              echo "❌ Second push failed. Remote changed again."
-              exit 1
-            }
-          fi
+            { print }
+          ' "$file" >> merged_tmp/combined-playlist.m3u
+        done
+
+        mv merged_tmp/combined-playlist.m3u combined-playlist.m3u
+        rm -rf merged_tmp
+
+    - name: Clone target repository
+      env:
+        TARGET_TOKEN2TS: ${{ secrets.TARGET_TOKEN2TS }}
+        TARGET_URLTS: ${{ secrets.TARGET_URLTS }}
+        TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
+      run: |
+        git clone https://x-access-token:${TARGET_TOKEN2TS}@${TARGET_URLTS} ${TARGET_NAMETS}
+
+    - name: Copy updated playlist to target repo
+      env:
+        TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
+        FILENAME: combined-playlist.m3u
+      run: |
+        cp $FILENAME $TARGET_NAMETS/$FILENAME
+
+    - name: Force Commit & Push to target repository
+      env:
+        TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
+        TARGET_REPO_USER: ${{ secrets.TARGET_REPO_USER }}
+        FILENAME: combined-playlist.m3u
+      run: |
+        cd $TARGET_NAMETS
+        git config user.name "${TARGET_REPO_USER}"
+        git config user.email "${TARGET_REPO_USER}@users.noreply.github.com"
+        git add $FILENAME
+        git commit --allow-empty -m "Force update $FILENAME playlist on $(date '+%Y-%m-%d %H:%M:%S')"
+        git push || {
+          echo "Push failed. Trying rebase..."
+          git pull --rebase && git push || {
+            echo "Push failed again."
+            exit 1
+          }
+        }
