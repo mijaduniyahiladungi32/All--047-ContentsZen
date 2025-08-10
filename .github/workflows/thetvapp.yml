@@ -16,9 +16,9 @@ jobs:
       - name: Checkout source repository
         uses: actions/checkout@v3
 
-      - name: Show current directory and files after checkout
+      - name: Show current directory after checkout
         run: |
-          echo "After checkout:"
+          echo "=== After Checkout ==="
           pwd
           ls -la
 
@@ -34,37 +34,45 @@ jobs:
           playwright install firefox
           playwright install-deps
 
-      - name: Show current directory and files after Python setup
+      - name: Debug before running tv.py
         run: |
-          echo "After Python & dependencies install:"
+          echo "=== BEFORE tv.py ==="
           pwd
           ls -la
 
       - name: Run scraping script
-        run: python tv.py
-
-      - name: Show current directory and files after scraping
         run: |
-          echo "After running tv.py:"
+          echo "Running tv.py..."
+          python tv.py
+          echo "=== AFTER tv.py ==="
           pwd
           ls -la
 
-      - name: Check if output file exists
+      - name: Check if TheTVApp.m3u8 was created
+        run: |
+          if [ -f "TheTVApp.m3u8" ]; then
+            echo "✅ TheTVApp.m3u8 exists!"
+            ls -lh TheTVApp.m3u8
+            echo "=== First 10 lines of TheTVApp.m3u8 ==="
+            head -n 10 TheTVApp.m3u8
+          else
+            echo "❌ TheTVApp.m3u8 not found!"
+            exit 1
+          fi
+
+      - name: Check if output file exists (from secret)
         env:
           FILENAME: ${{ secrets.FILENAMETHETVAPP }}
         run: |
-          echo "Checking for file $FILENAME"
-          if [ ! -f "$FILENAME" ]; then
-            echo "❌ File $FILENAME not found!"
-            exit 1
+          echo "Checking for file: $FILENAME"
+          if [ -f "$FILENAME" ]; then
+            echo "✅ $FILENAME exists!"
+            ls -lh "$FILENAME"
+            head -n 10 "$FILENAME"
           else
-            echo "✅ File $FILENAME found."
+            echo "❌ $FILENAME not found!"
+            exit 1
           fi
-
-      - name: Show first 10 lines of the playlist file
-        env:
-          FILENAME: ${{ secrets.FILENAMETHETVAPP }}
-        run: head -10 "$FILENAME"
 
       - name: Clone target repository
         env:
@@ -73,7 +81,7 @@ jobs:
           TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
         run: |
           git clone https://x-access-token:${TARGET_TOKEN2TS}@${TARGET_URLTS} ${TARGET_NAMETS}
-          echo "After cloning target repo:"
+          echo "=== Target repo content ==="
           ls -la ${TARGET_NAMETS}
 
       - name: Copy updated playlist to target repo
@@ -82,7 +90,7 @@ jobs:
           FILENAME: ${{ secrets.FILENAMETHETVAPP }}
         run: |
           echo "Copying $FILENAME to $TARGET_NAMETS/$FILENAME"
-          cp -v $FILENAME $TARGET_NAMETS/$FILENAME
+          cp -v "$FILENAME" "$TARGET_NAMETS/$FILENAME"
           ls -la $TARGET_NAMETS
 
       - name: Force Commit & Push to target repository
@@ -94,7 +102,7 @@ jobs:
           cd $TARGET_NAMETS
           git config user.name "${TARGET_REPO_USER}"
           git config user.email "${TARGET_REPO_USER}@users.noreply.github.com"
-          git add $FILENAME
+          git add "$FILENAME"
           git commit --allow-empty -m "Force update $FILENAME playlist on $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
           git push || {
             echo "Push to target repo failed. Trying rebase..."
