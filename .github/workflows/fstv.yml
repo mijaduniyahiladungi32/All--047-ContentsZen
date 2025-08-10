@@ -46,7 +46,7 @@ jobs:
         run: |
           cp $FILENAME $TARGET_NAMETS/$FILENAME
 
-      - name: 🚀 Commit & Push to target repository
+      - name: 🚀 Force Commit & Push to target repository
         env:
           TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
           TARGET_REPO_USER: ${{ secrets.TARGET_REPO_USER }}
@@ -56,7 +56,7 @@ jobs:
           git config user.name "${TARGET_REPO_USER}"
           git config user.email "${TARGET_REPO_USER}@users.noreply.github.com"
           git add $FILENAME
-          git commit -m "Auto update $FILENAME playlist on $(date '+%Y-%m-%d %H:%M:%S')" || echo "✅ No changes to commit"
+          git commit --allow-empty -m "🔁 Force update $FILENAME playlist on $(date '+%Y-%m-%d %H:%M:%S')"
           git push || {
             echo "⚠️ Push to target repo failed. Trying rebase..."
             git pull --rebase && git push || {
