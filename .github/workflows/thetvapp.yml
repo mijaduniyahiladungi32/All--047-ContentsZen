@@ -1,4 +1,4 @@
-name: Force Update FSTV Playlist
+name: Force Update FILENAMETHETVAPP Playlist
 
 on:
   workflow_dispatch:
