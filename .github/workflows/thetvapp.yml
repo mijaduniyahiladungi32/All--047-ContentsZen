@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: 📦 Install Python dependencies & Playwright
+      - name:  Install Python dependencies & Playwright
         run: |
           python -m pip install --upgrade pip
           pip install playwright urllib3 aiohttp
@@ -29,7 +29,7 @@ jobs:
           playwright install-deps
           
       - name: Run scraping script
-        run: python fstv.py
+        run: python tv.py
 
       - name: Clone target repository
         env:
@@ -42,7 +42,7 @@ jobs:
       - name: Copy updated playlist to target repo
         env:
           TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
-          FILENAME: ${{ secrets.FILENAMEFSTV }}
+          FILENAME: ${{ secrets.FILENAMETHETVAPP }}
         run: |
           cp $FILENAME $TARGET_NAMETS/$FILENAME
 
@@ -50,7 +50,7 @@ jobs:
         env:
           TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
           TARGET_REPO_USER: ${{ secrets.TARGET_REPO_USER }}
-          FILENAME: ${{ secrets.FILENAMEFSTV }}
+          FILENAME: ${{ secrets.FILENAMETHETVAPP }}
         run: |
           cd $TARGET_NAMETS
           git config user.name "${TARGET_REPO_USER}"
