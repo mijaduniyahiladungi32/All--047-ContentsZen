@@ -1,8 +1,8 @@
-name: Clone, Merge & Push Playlist
+name: Clone, Merge M3U & Push to Target Repo
 
 on:
   schedule:
-    - cron: '0 * * * *' 
+    - cron: '0 * * * *'   
   workflow_dispatch:
 
 jobs:
@@ -13,21 +13,21 @@ jobs:
     - name: Checkout this workflow repo
       uses: actions/checkout@v3
 
-    - name: Clone 
+    - name: Clone source repository from secret URL
       env:
-        TARGET_TOKEN2TS: ${{ secrets.TARGET_TOKEN2TS }}
-        TARGET_URLTS: ${{ secrets.TARGET_URLTS }}
-        TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
+        SOURCE_REPO_URL: ${{ secrets.SOURCE_REPO_URL }}
+        SOURCE_REPO_FOLDER: ${{ secrets.SOURCE_REPO_FOLDER }}
       run: |
-        # (public/private)
-        git clone https://x-access-token:${TARGET_TOKEN2TS}@${TARGET_URLTS} ${TARGET_NAMETS}
+        git clone $SOURCE_REPO_URL $SOURCE_REPO_FOLDER
 
     - name: Merge all .m3u with group-title set from cloned repo
+      env:
+        SOURCE_REPO_FOLDER: ${{ secrets.SOURCE_REPO_FOLDER }}
       run: |
         mkdir -p merged_tmp
         echo "#EXTM3U" > merged_tmp/combined-playlist.m3u
 
-        find ${TARGET_NAMETS} -type f -name "*.m3u" ! -name "combined-playlist.m3u" | while read file; do
+        find $SOURCE_REPO_FOLDER -type f -name "*.m3u" ! -name "combined-playlist.m3u" | while read file; do
           base=$(basename "$file" .m3u)
           awk -v grp="$base" '
             /^#EXTM3U/ { next }
@@ -76,9 +76,9 @@ jobs:
         git add $FILENAME
         git commit --allow-empty -m "Force update $FILENAME playlist on $(date '+%Y-%m-%d %H:%M:%S')"
         git push || {
-          echo "Push failed. Trying rebase..."
+          echo "Push to target repo failed. Trying rebase..."
           git pull --rebase && git push || {
-            echo "Push failed again."
+            echo "Push to target repo failed again."
             exit 1
           }
         }
