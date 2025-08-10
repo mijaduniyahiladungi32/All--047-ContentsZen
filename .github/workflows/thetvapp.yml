@@ -31,14 +31,6 @@ jobs:
       - name: Run scraping script
         run: python tv.py
 
-      - name: Debug workspace
-        run: |
-          echo "📂 Workspace contents:"
-          pwd
-          ls -lah
-          echo "🔍 Searching for TheTVApp.m3u8:"
-          find . -type f -name "TheTVApp.m3u8" || echo "❌ Not found"
-
       - name: Clone target repository
         env:
           TARGET_TOKEN2TS: ${{ secrets.TARGET_TOKEN2TS }}
@@ -46,20 +38,12 @@ jobs:
         run: |
           git clone https://x-access-token:${TARGET_TOKEN2TS}@${TARGET_URLTS} target-repo
 
-      - name: Copy updated playlist to target repo
+      - name: Copy updated playlist to target repo (force overwrite)
         env:
           FILENAME: 'TheTVApp.m3u8'
         run: |
-          FILEPATH=$(find . -type f -name "$FILENAME" -print -quit || true)
-
-          if [ -z "$FILEPATH" ]; then
-            echo "❌ File $FILENAME not found in workspace!"
-            exit 1
-          fi
-
-          echo "✅ Found file at: $FILEPATH"
-          cp "$FILEPATH" "target-repo/$FILENAME"
-          echo "📄 Copied $FILENAME into target-repo folder."
+          mkdir -p target-repo
+          cp -f "$FILENAME" "target-repo/$FILENAME"
 
       - name: Force Commit & Push to target repository
         env:
@@ -72,9 +56,9 @@ jobs:
           git add "$FILENAME"
           git commit --allow-empty -m "Force update $FILENAME playlist on $(date '+%Y-%m-%d %H:%M:%S')"
           git push || {
-            echo "Push to target repo failed. Trying rebase..."
+            echo "Push failed, retrying with rebase..."
             git pull --rebase && git push || {
-              echo "Push to target repo failed again."
+              echo "Push failed again, exiting."
               exit 1
             }
           }
