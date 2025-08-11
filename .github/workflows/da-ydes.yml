@@ -45,7 +45,7 @@ jobs:
       - name: Copy p
         env:
           TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
-          FILENAME: ${{ secrets.FILENAME }}
+          FILENAME: ${{ secrets.FILENAMEDA }}
         run: |
           cp $FILENAME $TARGET_NAMETS/$FILENAME
 
