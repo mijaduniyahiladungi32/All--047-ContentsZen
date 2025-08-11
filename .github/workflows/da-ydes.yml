@@ -53,7 +53,7 @@ jobs:
         env:
           TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
           TARGET_REPO_USER: ${{ secrets.TARGET_REPO_USER }}
-          FILENAME: ${{ secrets.FILENAME }}
+          FILENAME: ${{ secrets.FILENAMEDA }}
         run: |
           cd $TARGET_NAMETS
           git config user.name "${TARGET_REPO_USER}"
