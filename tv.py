@@ -1,265 +1,70 @@
-import asyncio
-import urllib.parse
-from pathlib import Path
 from playwright.async_api import async_playwright
+import asyncio
+import requests
+from pathlib import Path
 import os
-import sys
-import time
 
-M3U8_FILE = "TheTVApp.m3u8"
-BASE_URL = "https://thetvapp.to"
-CHANNEL_LIST_URL = f"{BASE_URL}/tv"
+async def scrape_images():
+    # Create a directory to save images
+    output_dir = Path("toffee_images")
+    output_dir.mkdir(exist_ok=True)
 
-SECTIONS_TO_APPEND = {
-    "/nba": "NBA",
-    "/mlb": "MLB",
-    "/wnba": "WNBA",
-    "/nfl": "NFL",
-    "/ncaaf": "NCAAF",
-    "/ncaab": "NCAAB",
-    "/soccer": "Soccer",
-    "/ppv": "PPV",
-    "/events": "Events"
-}
-
-def log_dir_state(stage):
-    print(f"\n=== Directory listing ({stage}) ===")
-    for f in sorted(os.listdir(".")):
-        print(f"- {f} ({os.path.getsize(f)} bytes)" if os.path.isfile(f) else f"[DIR] {f}")
-    print("===================================")
-
-def extract_real_m3u8(url: str):
-    if "ping.gif" in url and "mu=" in url:
-        parsed = urllib.parse.urlparse(url)
-        qs = urllib.parse.parse_qs(parsed.query)
-        mu = qs.get("mu", [None])[0]
-        if mu:
-            return urllib.parse.unquote(mu)
-    if ".m3u8" in url:
-        return url
-    return None
-
-async def scrape_tv_urls():
-    urls = []
     async with async_playwright() as p:
-        browser = await p.firefox.launch(headless=True)
-        context = await browser.new_context()
-        page = await context.new_page()
+        # Launch browser (headless=True for no UI, False to see the browser)
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
 
-        print(f"[INFO] Loading /tv channel list...")
-        await page.goto(CHANNEL_LIST_URL, timeout=60000)
-        links = await page.locator("ol.list-group a").all()
-        hrefs = [await link.get_attribute("href") for link in links if await link.get_attribute("href")]
-        print(f"[DEBUG] Found {len(hrefs)} TV channel links.")
-        await page.close()
+        try:
+            # Navigate to toffeelive.com
+            print("Navigating to https://toffeelive.com...")
+            await page.goto("https://toffeelive.com", timeout=60000)
 
-        for href in hrefs:
-            full_url = BASE_URL + href
-            print(f"[STEP] Scraping TV page: {full_url}")
-            for quality in ["SD", "HD"]:
-                stream_url = None
-                new_page = await context.new_page()
+            # Wait for images to load (adjust selector or timeout as needed)
+            await page.wait_for_selector("img", timeout=10000)
+            print("Page loaded, scraping images...")
 
-                async def handle_response(response):
-                    nonlocal stream_url
-                    real = extract_real_m3u8(response.url)
-                    if real and not stream_url:
-                        stream_url = real
+            # Find all image elements
+            images = await page.locator("img").all()
+            image_urls = []
 
-                new_page.on("response", handle_response)
-                await new_page.goto(full_url)
+            # Extract src attributes
+            for img in images:
+                src = await img.get_attribute("src")
+                if src:
+                    # Handle relative URLs
+                    if src.startswith("/"):
+                        src = f"https://toffeelive.com{src}"
+                    elif not src.startswith("http"):
+                        continue  # Skip data URLs or invalid URLs
+                    image_urls.append(src)
+
+            print(f"Found {len(image_urls)} images.")
+
+            # Save image URLs to a file
+            with open("toffee_image_urls.txt", "w", encoding="utf-8") as f:
+                for url in image_urls:
+                    f.write(url + "\n")
+
+            # Optionally download images
+            for i, url in enumerate(image_urls):
                 try:
-                    await new_page.get_by_text(f"Load {quality} Stream", exact=True).click(timeout=5000)
+                    response = requests.get(url, timeout=10)
+                    if response.status_code == 200:
+                        # Create a filename from the URL
+                        filename = output_dir / f"image_{i+1}.{url.split('.')[-1].split('?')[0]}"
+                        with open(filename, "wb") as f:
+                            f.write(response.content)
+                        print(f"Downloaded: {filename}")
+                    else:
+                        print(f"Failed to download: {url} (Status: {response.status_code})")
                 except Exception as e:
-                    print(f"[WARN] Could not click {quality} button: {e}")
-                await asyncio.sleep(4)
-                await new_page.close()
+                    print(f"Error downloading {url}: {e}")
 
-                if stream_url:
-                    print(f"[OK] {quality}: {stream_url}")
-                    urls.append(stream_url)
-                else:
-                    print(f"[FAIL] {quality} not found")
+        except Exception as e:
+            print(f"Error during scraping: {e}")
 
-        await browser.close()
-    return urls
+        finally:
+            await browser.close()
 
-async def scrape_section_urls(context, section_path, group_name):
-    urls = []
-    page = await context.new_page()
-    section_url = BASE_URL + section_path
-    print(f"\n[INFO] Loading section: {section_url}")
-    await page.goto(section_url, timeout=60000)
-    links = await page.locator("ol.list-group a").all()
-    hrefs_and_titles = []
-
-    for link in links:
-        href = await link.get_attribute("href")
-        title_raw = await link.text_content()
-        if href and title_raw:
-            title = " - ".join(line.strip() for line in title_raw.splitlines() if line.strip())
-            hrefs_and_titles.append((href, title))
-
-    print(f"[DEBUG] Found {len(hrefs_and_titles)} items in {group_name}.")
-    await page.close()
-
-    for href, title in hrefs_and_titles:
-        full_url = BASE_URL + href
-        print(f"[STEP] Scraping {group_name}: {title}")
-
-        for quality in ["SD", "HD"]:
-            stream_url = None
-            new_page = await context.new_page()
-
-            async def handle_response(response):
-                nonlocal stream_url
-                real = extract_real_m3u8(response.url)
-                if real and not stream_url:
-                    stream_url = real
-
-            new_page.on("response", handle_response)
-            await new_page.goto(full_url, timeout=60000)
-
-            try:
-                await new_page.get_by_text(f"Load {quality} Stream", exact=True).click(timeout=5000)
-            except Exception as e:
-                print(f"[WARN] Could not click {quality} button: {e}")
-
-            await asyncio.sleep(4)
-            await new_page.close()
-
-            if stream_url:
-                print(f"[OK] {quality}: {stream_url}")
-                urls.append((stream_url, group_name, title))
-            else:
-                print(f"[FAIL] {quality} not found")
-
-    return urls
-
-async def scrape_all_append_sections():
-    all_urls = []
-    async with async_playwright() as p:
-        browser = await p.firefox.launch(headless=True)
-        context = await browser.new_context()
-
-        for section_path, group_name in SECTIONS_TO_APPEND.items():
-            urls = await scrape_section_urls(context, section_path, group_name)
-            all_urls.extend(urls)
-
-        await browser.close()
-    return all_urls
-
-def replace_urls_in_tv_section(lines, tv_urls):
-    result = []
-    url_idx = 0
-    for line in lines:
-        if line.strip().startswith("http") and url_idx < len(tv_urls):
-            result.append(tv_urls[url_idx])
-            url_idx += 1
-        else:
-            result.append(line)
-    return result
-
-def append_new_streams(lines, new_urls_with_groups):
-    cleaned_lines = []
-    skip_next = False
-    for line in lines:
-        if skip_next:
-            skip_next = False
-            continue
-        if line.startswith("#EXTINF:-1") and (
-            "group-title=\"MLB\"" in line or
-            "group-title=\"PPV\"" in line or
-            "group-title=\"NFL\"" in line
-        ):
-            skip_next = True
-            continue
-        cleaned_lines.append(line)
-
-    existing_entries = {}
-    i = 0
-    while i < len(cleaned_lines) - 1:
-        if cleaned_lines[i].startswith("#EXTINF:-1"):
-            line = cleaned_lines[i]
-            group = None
-            title = line.split(",")[-1].strip()
-            if 'group-title="' in line:
-                group = line.split('group-title="')[1].split('"')[0]
-            if group:
-                url = cleaned_lines[i + 1]
-                if (group, title) not in existing_entries:
-                    existing_entries[(group, title)] = set()
-                existing_entries[(group, title)].add(url)
-        i += 1
-
-    new_entries_added = {}
-
-    for url, group, title in new_urls_with_groups:
-        key = (group, title)
-        if key not in new_entries_added:
-            new_entries_added[key] = set()
-
-        if (key in existing_entries and url in existing_entries[key]) or (url in new_entries_added[key]):
-            continue
-
-        if len(new_entries_added[key]) >= 2:
-            continue
-
-        if group == "MLB":
-            ext = f'#EXTINF:-1 tvg-id="MLB.Baseball.Dummy.us" tvg-name="{title}" tvg-logo="http://drewlive24.duckdns.org:9000/Logos/Baseball-2.png" group-title="MLB",{title}'
-        elif group == "PPV":
-            ext = f'#EXTINF:-1 tvg-id="PPV.EVENTS.Dummy.us" tvg-name="{title}" tvg-logo="http://drewlive24.duckdns.org:9000/Logos/PPV.png" group-title="PPV",{title}'
-        elif group == "NFL":
-            ext = f'#EXTINF:-1 tvg-id="NFL.Dummy.us" tvg-name="{title}" tvg-logo="http://drewlive24.duckdns.org:9000/Logos/NFL.png" group-title="NFL",{title}'
-        else:
-            ext = f'#EXTINF:-1 group-title="{group}",{title}'
-
-        cleaned_lines.append(ext)
-        cleaned_lines.append(url)
-        new_entries_added[key].add(url)
-
-    cleaned_lines = [line for line in cleaned_lines if line.strip()]
-    if not cleaned_lines or cleaned_lines[0].strip() != "#EXTM3U":
-        cleaned_lines.insert(0, "#EXTM3U")
-
-    return cleaned_lines
-
-async def main():
-    log_dir_state("BEFORE RUN")
-
-    if not Path(M3U8_FILE).exists():
-        print(f"[ERROR] File not found: {M3U8_FILE}")
-        return
-
-    with open(M3U8_FILE, "r", encoding="utf-8") as f:
-        lines = f.read().splitlines()
-
-    print("[STEP] Replacing only /tv stream URLs...")
-    tv_new_urls = await scrape_tv_urls()
-    print(f"[DEBUG] TV URLs scraped: {len(tv_new_urls)}")
-    if not tv_new_urls:
-        print("[ERROR] No TV URLs scraped.")
-        return
-
-    updated_lines = replace_urls_in_tv_section(lines, tv_new_urls)
-
-    print("\n[STEP] Scraping all other sections...")
-    append_new_urls = await scrape_all_append_sections()
-    print(f"[DEBUG] Section URLs scraped: {len(append_new_urls)}")
-    if append_new_urls:
-        updated_lines = append_new_streams(updated_lines, append_new_urls)
-
-    with open(M3U8_FILE, "w", encoding="utf-8") as f:
-        f.write("\n".join(updated_lines))
-
-    print(f"[DONE] {M3U8_FILE} updated successfully.")
-    log_dir_state("AFTER RUN")
-
-if __name__ == "__main__":
-    start_time = time.time()
-    try:
-        asyncio.run(main())
-    except Exception as e:
-        print(f"[FATAL] {e}")
-        sys.exit(1)
-    print(f"[INFO] Total runtime: {time.time() - start_time:.2f} seconds")
+# Run the async function
+asyncio.run(scrape_images())
