@@ -1,39 +1,68 @@
-name: Update TheTVApp Playlist
+name: 🚀 Update TheTVApp Playlist 📺
 
 on:
-  workflow_dispatch:   # Manual run button
   schedule:
-    - cron: "0 */6 * * *"   # Every 6 hours (UTC)
+    - cron: '0 * * * *'  # ⏰ Run every hour
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  update:
+  scrape:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v3
         with:
-          python-version: "3.11"
+          fetch-depth: 0
 
-      - name: Install dependencies
+      - name: 🐍 Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Install Python dependencies & Playwright
         run: |
           python -m pip install --upgrade pip
-          pip install playwright
+          pip install playwright urllib3 aiohttp
           playwright install firefox
+          playwright install-deps
 
-      - name: Run TV scraper
+      - name: 🎯 Run scraping script
         run: python tv.py
 
-      - name: Commit and push if changed
+      - name: 💾 Commit & Safely Push if Playlist Changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config --global user.name "TVAppBot"
-          git config --global user.email "bot@example.com"
-          git add -A
-          git commit -m "Auto-update TheTVApp.m3u8 [skip ci]" || echo "No changes to commit"
-          git push
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Stage the output
+          git add TheTVApp.m3u8
+
+          # Check if file actually changed
+          if git diff --cached --quiet; then
+            echo "✅ No changes to commit"
+            exit 0
+          fi
+
+          git commit -m "🔁 Update playlist $(date -u +'%a %b %d %T UTC %Y')"
+
+          # Small random delay to reduce collisions
+          sleep $((RANDOM % 10 + 5))
+
+          # Safe push, fallback merge if rejected
+          if ! git push origin main; then
+            echo "⚠️ Push rejected. Trying safe fetch + merge..."
+            git pull origin main --rebase || {
+              echo "❌ Rebase failed. Exiting to avoid corruption."
+              exit 1
+            }
+            git push origin main || {
+              echo "❌ Second push failed. Remote changed again."
+              exit 1
+            }
+          fi
