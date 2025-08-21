@@ -1,0 +1,66 @@
+name: Force Update thetvapp Playlist
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 * * * *'  # Hourly refresh
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Install Python dependencies & Playwright
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright urllib3 aiohttp
+          playwright install firefox
+          playwright install-deps
+          
+      - name: Run scraping script
+        run: python tv.py
+
+      - name: Clone target repository
+        env:
+          TARGET_TOKEN2TS: ${{ secrets.TARGET_TOKEN2TS }}
+          TARGET_URLTS: ${{ secrets.TARGET_URLTS }}
+          TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
+        run: |
+          git clone https://x-access-token:${TARGET_TOKEN2TS}@${TARGET_URLTS} ${TARGET_NAMETS}
+
+      - name: Copy updated playlist to target repo
+        env:
+          TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
+          FILENAME: ${{ secrets.FILENAMETHETVAPP }}
+        run: |
+          cp $FILENAME $TARGET_NAMETS/$FILENAME
+
+      - name: Force Commit & Push to target repository
+        env:
+          TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
+          TARGET_REPO_USER: ${{ secrets.TARGET_REPO_USER }}
+          FILENAME: ${{ secrets.FILENAMETHETVAPP }}
+        run: |
+          cd $TARGET_NAMETS
+          git config user.name "${TARGET_REPO_USER}"
+          git config user.email "${TARGET_REPO_USER}@users.noreply.github.com"
+          git add $FILENAME
+          git commit --allow-empty -m "Force update $FILENAME playlist on $(date '+%Y-%m-%d %H:%M:%S')"
+          git push || {
+            echo "Push to target repo failed. Trying rebase..."
+            git pull --rebase && git push || {
+              echo "Push to target repo failed again."
+              exit 1
+            }
+          }

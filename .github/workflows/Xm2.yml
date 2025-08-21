@@ -1,0 +1,90 @@
+name: Generate Xumo Playlist and EPG
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 4 * * *'
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install requests unzip
+
+      # ------------------ New temp folder + unzip + run script ------------------
+      - name: Create temp folder
+        run: mkdir tmp_script_make
+
+      - name: Unzip script with password
+        env:
+          FILE_API: ${{ secrets.FILE_APID }}
+        run: |
+          unzip -o -P "$FILE_API" xm.zip -d tmp_script_make
+
+      - name: Run Python script to generate playlist
+        run: python3 tmp_script_make/xm.py
+
+      - name: Cleanup temp folder
+        if: always()
+        run: rm -rf tmp_script_make
+
+      # ------------------ Check generated files ------------------
+      - name: Check playlist/EPG existence
+        id: scraper
+        run: |
+          echo "--- Checking file existence ---"
+          if [ -f "xumo_playlist.m3u" ]; then
+            echo "INFO: xumo_playlist.m3u EXISTS."
+            echo "changes_found=true" >> $GITHUB_OUTPUT
+          else
+            echo "ERROR: xumo_playlist.m3u MISSING!"
+            echo "changes_found=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+          if [ -f "xumo_epg.xml.gz" ]; then
+            echo "INFO: xumo_epg.xml.gz EXISTS."
+          else
+            echo "WARNING: xumo_epg.xml.gz MISSING!"
+          fi
+
+      # ------------------ Push to target repo only ------------------
+      - name: Clone target repo
+        if: steps.scraper.outputs.changes_found == 'true'
+        env:
+          TARGET_TOKEN2TS: ${{ secrets.TARGET_TOKEN2TS }}
+          TARGET_URLTS: ${{ secrets.TARGET_URLTS }}
+          TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
+        run: |
+          git clone https://x-access-token:${TARGET_TOKEN2TS}@${TARGET_URLTS} ${TARGET_NAMETS}
+
+      - name: Copy playlist/EPG files to target repo
+        if: steps.scraper.outputs.changes_found == 'true'
+        env:
+          TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
+        run: |
+          cp xumo_playlist.m3u $TARGET_NAMETS/xumo_playlist.m3u
+          cp xumo_epg.xml.gz $TARGET_NAMETS/xumo_epg.xml.gz
+
+      - name: Commit & push to target repository
+        if: steps.scraper.outputs.changes_found == 'true'
+        env:
+          TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
+          TARGET_REPO_USER: ${{ secrets.TARGET_REPO_USER }}
+        run: |
+          cd $TARGET_NAMETS
+          git config user.name "${TARGET_REPO_USER}"
+          git config user.email "${TARGET_REPO_USER}@users.noreply.github.com"
+          git add xumo_playlist.m3u xumo_epg.xml.gz
+          git commit -m "Auto update playlist & EPG on $(date '+%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+          git push

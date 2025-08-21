@@ -1,0 +1,36 @@
+name: Generate LGChannels Playlist
+
+on:
+  workflow_dispatch:   # Manual run
+  schedule:
+    - cron: "0 */6 * * *"   # Every 6 hours
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.x"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Run LGChannels Generator
+        run: |
+          python lg.py
+
+      - name: Commit and Push changes
+        run: |
+          git config user.name "LGChannelsBot"
+          git config user.email "bot@example.com"
+          git add lgchannels_playlist/*
+          git diff --quiet && git diff --staged --quiet || git commit -m "Auto update LGChannels playlist and EPG"
+          git push

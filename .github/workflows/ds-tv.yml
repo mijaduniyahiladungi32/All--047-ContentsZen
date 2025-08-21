@@ -1,0 +1,61 @@
+name: Auto Update Playlist
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  update-playlist:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v3
+
+      - name: Install Python dependencies
+        run: pip install requests
+
+      - name: Create temp folder
+        run: mkdir tmp_script
+
+      - name: Unzip script with password
+        env:
+          FILE_API: ${{ secrets.FILE_APID }}
+        run: |
+          unzip -o -P "$FILE_API" filedst.zip -d tmp_script
+
+      - name: Run python script to generate playlist
+        run: python3 tmp_script/filedst.py
+
+      - name: Cleanup temp folder
+        if: always()
+        run: rm -rf tmp_script
+
+      - name: Clone target repo
+        env:
+          TARGET_TOKEN2TS: ${{ secrets.TARGET_TOKEN2TS }}
+          TARGET_URLTS: ${{ secrets.TARGET_URLTS }}
+          TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
+        run: |
+          git clone https://x-access-token:${TARGET_TOKEN2TS}@${TARGET_URLTS} ${TARGET_NAMETS}
+
+      - name: Copy p
+        env:
+          TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
+          FILENAME: ${{ secrets.FILENAME }}
+        run: |
+          cp $FILENAME $TARGET_NAMETS/$FILENAME
+
+      - name: Commit & push to target repository
+        env:
+          TARGET_NAMETS: ${{ secrets.TARGET_NAMETS }}
+          TARGET_REPO_USER: ${{ secrets.TARGET_REPO_USER }}
+          FILENAME: ${{ secrets.FILENAME }}
+        run: |
+          cd $TARGET_NAMETS
+          git config user.name "${TARGET_REPO_USER}"
+          git config user.email "${TARGET_REPO_USER}@users.noreply.github.com"
+          git add $FILENAME
+          git commit -m "Auto update $FILENAME playlist on $(date '+%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+          git push

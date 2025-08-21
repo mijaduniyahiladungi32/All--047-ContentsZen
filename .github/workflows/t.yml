@@ -1,0 +1,65 @@
+name: Scrape and Update Bangla Channel Images
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Runs daily at midnight UTC
+  workflow_dispatch:  # Allows manual trigger from GitHub UI
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Grants write permissions for GITHUB_TOKEN
+      actions: read    # Allows reading workflow data
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for accurate git operations
+          ref: main       # Explicitly checkout the main branch (adjust if needed)
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright requests
+          playwright install --with-deps chromium
+        continue-on-error: false
+
+      - name: Run scrape script
+        run: |
+          python scrape.py
+        continue-on-error: false
+
+      - name: Debug git status
+        run: |
+          git status
+          ls -la images/
+        continue-on-error: true
+
+      - name: Check for changes
+        id: check-changes
+        run: |
+          git diff --quiet images/ || echo "changes=true" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Commit changes
+        if: steps.check-changes.outputs.changes == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add images/
+          git commit -m "Auto-update: Scraped Bangla channel images from jagobd.com" || echo "No changes to commit"
+        continue-on-error: true
+
+      - name: Push changes
+        if: steps.check-changes.outputs.changes == 'true'
+        run: |
+          git push origin main || echo "Failed to push, check permissions or branch protection"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
