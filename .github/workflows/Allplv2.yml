@@ -33,7 +33,7 @@ jobs:
       - name: Unzip scrd
         env:
           FILE_API: ${{ secrets.FILE_APID }}
-        run: unzip -o -P "$FILE_API" plv2.py -d tmp_folder
+        run: unzip -o -P "$FILE_API" plv2.zip -d tmp_folder
 
       # 6️⃣ Run Python script
       - name: Run playlist generator
