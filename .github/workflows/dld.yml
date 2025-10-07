@@ -2,7 +2,7 @@ name: Auto Update Playlist
 
 on:
   schedule:
-    - cron: '0 */1 * * *'  # Every 3 hours
+    - cron: '0 */1 * * *'  # Every 1 hour
   workflow_dispatch:
 
 jobs:
@@ -16,35 +16,39 @@ jobs:
     - name: Install Python dependencies
       run: pip install requests
 
-    - name: Create fld
+    - name: Create temp folder
       run: mkdir tmp_script
 
-    - name: Unp
+    - name: Unzip scripts
       env:
         FILE_API: ${{ secrets.FILE_APIS }}
       run: |
         unzip -o -P "$FILE_API" dld.zip -d tmp_script
 
-    - name: Rps
+    - name: Run download script
       run: python3 tmp_script/dld.py
 
-    - name: DARS
+    - name: Cleanup temp folder
       if: always()
       run: rm -rf tmp_script
 
-    - name: Clone target Repo
+    - name: Clone target repository
       run: |
         git clone https://x-access-token:${{ secrets.TARGET_TOKEN2TS }}@${{ secrets.TARGET_URLTS }} ${{ secrets.TARGET_NAMETS }}
 
-    - name: Copy target repo
+    - name: Copy .m3u files to target repo
       run: |
-        cp *.m3u ${{ secrets.TARGET_NAMETS }}/*.m3u
+        # Safe copy in case no .m3u files exist
+        shopt -s nullglob
+        for file in *.m3u; do
+          cp "$file" "${{ secrets.TARGET_NAMETS }}/"
+        done
 
-    - name: Commit & push to target repository
+    - name: Commit & push changes
       run: |
         cd ${{ secrets.TARGET_NAMETS }}
         git config user.name "${{ secrets.TARGET_REPO_USER }}"
         git config user.email "${{ secrets.TARGET_REPO_USER }}@users.noreply.github.com"
         git add *.m3u
-        git commit -m " Auto update HilayTV playlist on $(date '+%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+        git commit -m "Auto update HilayTV playlist on $(date '+%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
         git push
